@@ -21,6 +21,31 @@ Inventory is **ox_inventory**, prompts and the strike are **ox_lib**.
 6. Sell at the fishmonger on Paleto pier — one kind at a time, or the whole
    bucket.
 
+**A rod appears in your hands** for the length of the session — from the first
+cast to the last, not per cast. Bone `60309` is the left hand, which is where
+the fishing animation holds it, with the right hand on the reel. If the prop
+will not load it is a note in the console and fishing carries on without it —
+losing the prop should never cost you a cast.
+
+### Getting the rod to sit right
+
+Attachment offsets cannot be worked out from outside the game, and guessing at
+them one push at a time is slow. Three commands do it while you watch:
+
+| | |
+| --- | --- |
+| `/rodtune` | puts the rod in your hands where you stand, and takes it away again |
+| `/rodrot [pitch] [roll] [yaw]` | turns it, live |
+| `/rodoff [x] [y] [z]` | moves it, live |
+
+Every change prints the finished `offset = ... , rotation = ...` line to F8,
+ready to paste into `Config.RodProp`.
+
+The shipped `rotation = vector3(-180.0, 180.0, 200.0)` was found this way. The
+two values before it — `80` and `-100` pitch — were guesses from outside the
+game, and both were wrong: one pointed the rod at the ground, the other left it
+askew. Use the commands.
+
 ### What ends a session
 
 Losing a fish does not — it just casts again. These do:
@@ -164,6 +189,8 @@ outcome is server-side:
 | `Config.WaterDistance` | `25.0` | How far above or below the water you may stand. |
 | `Config.CastDistance` | `12.0` | How far ahead the line is thrown. |
 | `Config.MinCastInterval` | `4000` | Server-side floor between casts. |
+| `Config.RodProp` | `prop_fishing_rod_01` | The rod in your hands. `model = false` to fish empty-handed. |
+| `Config.RodProp.tuneCommand` | `true` | Registers `/rodtune`, `/rodrot`, `/rodoff`. |
 | `Config.StopKey` | `73` (X) | Ends the session. Control index, not a key code. |
 | `Config.RecastDelay` | `1500` | Pause between one cast and the next. |
 | `Config.Fishmonger` | Paleto pier | Where the ped stands, and the blip. |
@@ -171,8 +198,9 @@ outcome is server-side:
 
 ## Known gaps
 
-- **The fishmonger's coordinates are unverified.** They put him on Paleto pier
-  from the map, not from standing there. `/fishcoord` prints a ready line.
+- The fishmonger falls back through two models and then to a bare zone, so
+  selling works even if no ped loads — but a missing ped is worth chasing: the
+  reason is printed to F8 at start.
 - No boats, no depth, no time of day: where you cast changes nothing, only what
   you cast with. Pools are per bait, so per-location pools would be the natural
   next step.

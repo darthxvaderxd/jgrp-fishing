@@ -154,7 +154,20 @@ lib.callback.register('jgrp-fishing:server:land', function(source, landed)
     local fish = Config.Fish[cast.fish]
     if not fish then return { ok = false, reason = 'error' } end
 
-    if not exports.ox_inventory:AddItem(src, cast.fish, 1) then
+    local added, problem = exports.ox_inventory:AddItem(src, cast.fish, 1)
+
+    if not added then
+        -- ox says *why* it refused, and the two reasons need different answers:
+        -- a full inventory is the player's problem, an item that does not exist
+        -- is ours. Reporting the second as "no room" sent someone hunting for
+        -- space they already had.
+        if problem == 'invalid_item' then
+            print(('^1[jgrp-fishing]^7 "%s" is configured as a catch but is not an ox_inventory item -- nobody can be given one')
+                :format(cast.fish))
+
+            return { ok = false, reason = 'unknown_item', label = fish.label or cast.fish }
+        end
+
         return { ok = false, reason = 'no_room', label = fish.label or cast.fish }
     end
 
@@ -264,6 +277,43 @@ end)
 exports('useBait', function(event, item, inventory)
     if event ~= 'usingItem' then return end
     TriggerClientEvent('jgrp-fishing:client:cast', inventory.id or inventory)
+end)
+
+--- Check every item this config names against ox_inventory, once, at start.
+---
+--- A fish that is not an item cannot be given to anyone, and without this the
+--- first person to catch one gets a misleading error and nobody looks at the
+--- console. Renaming a catch in the config without adding the item is an easy
+--- mistake -- this makes it a line at boot instead.
+AddEventHandler('onResourceStart', function(resource)
+    if resource ~= GetCurrentResourceName() then return end
+
+    Wait(1000)
+
+    local missing = {}
+
+    local function check(name, where)
+        local ok, item = pcall(function() return exports.ox_inventory:Items(name) end)
+
+        if not ok or not item then
+            missing[#missing + 1] = ('%s (%s)'):format(name, where)
+        end
+    end
+
+    for item in pairs(Config.Fish) do check(item, 'Config.Fish') end
+    for name, bait in pairs(Config.Baits) do
+        check(name, 'Config.Baits')
+        for i = 1, #bait.pool do check(bait.pool[i].item, 'the ' .. name .. ' pool') end
+    end
+    for name in pairs(Config.Rods) do check(name, 'Config.Rods') end
+
+    if #missing > 0 then
+        print(('^1[jgrp-fishing]^7 %d configured item(s) do not exist in ox_inventory:'):format(#missing))
+
+        for i = 1, #missing do
+            print(('^1  %s^7'):format(missing[i]))
+        end
+    end
 end)
 
 AddEventHandler('playerDropped', function()

@@ -4,6 +4,7 @@ local TARGET_OPTION = 'jgrp_fishing_sell'
 
 local casting = false
 local stopRequested = false
+local rodProp
 local monger, mongerZone, mongerBlip
 
 local function notify(message, type)
@@ -44,6 +45,78 @@ end
 -- ---------------------------------------------------------------------------
 -- Casting
 -- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- The rod in hand
+-- ---------------------------------------------------------------------------
+
+--- The attachment being tuned. Seeded from the config and moved by /rodrot and
+--- /rodoff, so the numbers can be found in game rather than guessed at.
+local rodOffset = Config.RodProp and Config.RodProp.offset or vector3(0.1, 0.05, 0.0)
+local rodRotation = Config.RodProp and Config.RodProp.rotation or vector3(-100.0, 120.0, 160.0)
+
+local function detachRod()
+    if not rodProp then return end
+
+    if DoesEntityExist(rodProp) then DeleteEntity(rodProp) end
+    rodProp = nil
+end
+
+--- Put a rod in the player's hands for the length of the session.
+---
+--- Failure here is cosmetic, so it never stops a cast: a rod that will not
+--- load is a note in the console and fishing carries on without the prop.
+local function attachRod()
+    if rodProp and DoesEntityExist(rodProp) then return end
+
+    local prop = Config.RodProp
+    if not prop or not prop.model then return end
+
+    local loaded, model = pcall(lib.requestModel, prop.model, 10000)
+
+    if not loaded or not model then
+        print(('^3[jgrp-fishing]^7 rod prop "%s" would not load -- fishing without it')
+            :format(tostring(prop.model)))
+        return
+    end
+
+    local ped = PlayerPedId()
+    local coords = GetEntityCoords(ped)
+
+    rodProp = CreateObject(model, coords.x, coords.y, coords.z, true, true, false)
+    SetModelAsNoLongerNeeded(model)
+
+    if not DoesEntityExist(rodProp) then
+        rodProp = nil
+        return
+    end
+
+    AttachEntityToEntity(
+        rodProp, ped, GetPedBoneIndex(ped, prop.bone or 60309),
+        rodOffset.x, rodOffset.y, rodOffset.z,
+        rodRotation.x, rodRotation.y, rodRotation.z,
+        true, true, false, true, 1, true
+    )
+end
+
+--- Put it back on with whatever the numbers are now.
+---
+--- Spawns one if there is not a rod in hand, so /rodrot and /rodoff work on
+--- their own. They used to return quietly when nothing was attached, which is
+--- how the commands looked broken: they stored the numbers, printed them to a
+--- console nobody was watching, and moved nothing.
+local function reattachRod()
+    detachRod()
+    attachRod()
+
+    return rodProp ~= nil
+end
+
+--- The line to paste into Config.RodProp.
+local function printRodLine()
+    print(('^2[jgrp-fishing]^7 offset = vector3(%.2f, %.2f, %.2f), rotation = vector3(%.1f, %.1f, %.1f)')
+        :format(rodOffset.x, rodOffset.y, rodOffset.z, rodRotation.x, rodRotation.y, rodRotation.z))
+end
 
 local function playCastAnim(seconds)
     lib.requestAnimDict(Config.AnimDict, 5000)
@@ -157,6 +230,13 @@ local function doCast()
         return false
     end
 
+    -- Not the player's fault and not fixable by them: the catch is configured
+    -- but no such item exists.
+    if result.reason == 'unknown_item' then
+        notify(('Something is wrong with %s -- tell an admin.'):format(result.label or 'that catch'), 'error')
+        return false
+    end
+
     if result.reason ~= 'no_cast' then
         notify('It got away.', 'error')
     end
@@ -171,6 +251,7 @@ local function cast()
     casting = true
     stopRequested = false
 
+    attachRod()
     lib.showTextUI(Config.StopLabel)
 
     -- Watches for the stop key for as long as the session runs. A thread of its
@@ -202,6 +283,7 @@ local function cast()
     stopRequested = false
 
     stopCastAnim()
+    detachRod()
     lib.hideTextUI()
 end
 
@@ -275,45 +357,104 @@ end
 -- The fishmonger himself
 -- ---------------------------------------------------------------------------
 
-local function spawnMonger()
-    if monger and DoesEntityExist(monger) then return end
+--- Models tried in order. The configured one first, then one that is known to
+--- load on this server -- `a_m_m_fishing_01` was never verified, and a model
+--- that does not exist makes `lib.requestModel` raise, which used to leave no
+--- ped and no explanation.
+local function mongerModels()
+    local models = {}
 
-    local spot = Config.Fishmonger.coords
+    if Config.Fishmonger.model then models[#models + 1] = Config.Fishmonger.model end
+    models[#models + 1] = 'a_m_m_genfat_01'
 
-    local loaded, model = pcall(lib.requestModel, Config.Fishmonger.model, 10000)
+    return models
+end
 
-    if not loaded or not model then
-        print(('^1[jgrp-fishing]^7 fishmonger model "%s" would not load'):format(tostring(Config.Fishmonger.model)))
+--- The eye, wherever it ends up -- on the ped if there is one, on the spot if
+--- there is not. Selling should not depend on a model existing.
+local function addSellTarget(entity)
+    if not hasTarget() then return end
+
+    local option = {
+        name = TARGET_OPTION,
+        icon = Config.Fishmonger.icon,
+        label = Config.Fishmonger.label,
+        distance = Config.Fishmonger.targetDistance,
+        onSelect = openFishmonger,
+    }
+
+    if entity then
+        exports.ox_target:addLocalEntity(entity, { option })
         return
     end
 
-    monger = CreatePed(4, model, spot.x, spot.y, spot.z - 1.0, spot.w, false, false)
+    local spot = Config.Fishmonger.coords
+
+    local ok, zone = pcall(function()
+        return exports.ox_target:addSphereZone({
+            coords = vector3(spot.x, spot.y, spot.z),
+            radius = math.max(1.5, Config.Fishmonger.targetDistance or 2.5),
+            options = { option },
+        })
+    end)
+
+    if ok and zone then mongerZone = zone end
+end
+
+local function spawnMonger()
+    if monger and DoesEntityExist(monger) then return end
+    if mongerZone then return end
+
+    local spot = Config.Fishmonger.coords
+    local model
+
+    for _, candidate in ipairs(mongerModels()) do
+        local loaded, hash = pcall(lib.requestModel, candidate, 10000)
+
+        if loaded and hash then
+            model = hash
+            break
+        end
+
+        print(('^3[jgrp-fishing]^7 fishmonger model "%s" would not load'):format(tostring(candidate)))
+    end
+
+    if not model then
+        -- No ped at all: put the eye on the spot so the shop still works.
+        print('^1[jgrp-fishing]^7 no fishmonger model loaded -- selling from a zone instead')
+        addSellTarget(nil)
+        return
+    end
+
+    -- **At spot.z, not below it.** /fishcoord prints GetEntityCoords of the
+    -- player, which is already where the feet are; spawning a metre under that
+    -- buried him in the pier, which looks exactly like the ped never spawning.
+    monger = CreatePed(4, model, spot.x, spot.y, spot.z, spot.w, false, false)
 
     if not DoesEntityExist(monger) then
         SetModelAsNoLongerNeeded(model)
         monger = nil
+        addSellTarget(nil)
         return
     end
 
+    SetEntityHeading(monger, spot.w or 0.0)
     FreezeEntityPosition(monger, true)
     SetEntityInvincible(monger, true)
     SetBlockingOfNonTemporaryEvents(monger, true)
     SetModelAsNoLongerNeeded(model)
 
-    if hasTarget() then
-        exports.ox_target:addLocalEntity(monger, {
-            {
-                name = TARGET_OPTION,
-                icon = Config.Fishmonger.icon,
-                label = Config.Fishmonger.label,
-                distance = Config.Fishmonger.targetDistance,
-                onSelect = openFishmonger,
-            },
-        })
-    end
+    addSellTarget(monger)
 end
 
 local function removeMonger()
+    if mongerZone then
+        if hasTarget() then
+            pcall(function() exports.ox_target:removeZone(mongerZone) end)
+        end
+        mongerZone = nil
+    end
+
     if not monger then return end
 
     if hasTarget() then
@@ -382,6 +523,69 @@ CreateThread(function()
     end, false)
 end)
 
+-- ---------------------------------------------------------------------------
+-- Finding the rod's attachment
+--
+-- Offsets cannot be worked out from outside the game, so rather than guess and
+-- push, guess and push again, these move the rod while you watch it and print
+-- the line to paste back into the config.
+-- ---------------------------------------------------------------------------
+
+CreateThread(function()
+    if not (Config.RodProp and Config.RodProp.tuneCommand) then return end
+
+    --- Rod in hand, standing still, without fishing.
+    RegisterCommand('rodtune', function()
+        if rodProp then
+            detachRod()
+            return notify('Rod put away.', 'primary')
+        end
+
+        attachRod()
+
+        if not rodProp then
+            return notify('The rod prop would not load.', 'error')
+        end
+
+        notify('Rod in hand. /rodrot x y z and /rodoff x y z to move it.', 'primary')
+        printRodLine()
+    end, false)
+
+    RegisterCommand('rodrot', function(_, args)
+        local x, y, z = tonumber(args[1]), tonumber(args[2]), tonumber(args[3])
+
+        if not x or not y or not z then
+            return notify('Usage: /rodrot [pitch] [roll] [yaw]', 'error')
+        end
+
+        rodRotation = vector3(x, y, z)
+
+        if not reattachRod() then
+            return notify('The rod prop would not load.', 'error')
+        end
+
+        notify(('Rotation %.0f, %.0f, %.0f'):format(x, y, z), 'primary')
+        printRodLine()
+    end, false)
+
+    RegisterCommand('rodoff', function(_, args)
+        local x, y, z = tonumber(args[1]), tonumber(args[2]), tonumber(args[3])
+
+        if not x or not y or not z then
+            return notify('Usage: /rodoff [x] [y] [z]', 'error')
+        end
+
+        rodOffset = vector3(x, y, z)
+
+        if not reattachRod() then
+            return notify('The rod prop would not load.', 'error')
+        end
+
+        notify(('Offset %.2f, %.2f, %.2f'):format(x, y, z), 'primary')
+        printRodLine()
+    end, false)
+end)
+
 AddEventHandler('onResourceStop', function(resource)
     if resource ~= GetCurrentResourceName() then return end
 
@@ -389,6 +593,7 @@ AddEventHandler('onResourceStop', function(resource)
     -- it.
     casting = false
     stopRequested = true
+    detachRod()
     lib.hideTextUI()
 
     removeMonger()

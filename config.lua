@@ -86,7 +86,7 @@ Config.Baits = {
         minLevel = 0,
         pool = {
             { item = 'perch',    weight = 30 },
-            { item = 'mullet',   weight = 25 },
+            { item = 'catfish',   weight = 25 },
             { item = 'trout',    weight = 15 },
             { item = 'bass',     weight = 10 },
             { item = 'carp',     weight = 8 },
@@ -154,7 +154,7 @@ Config.BaitOrder = { 'illegalbait', 'shrimp_lure', 'worm' }
 --- copy in this file.
 Config.Fish = {
     ['perch']    = { label = 'Perch',   price = { min = 45,  max = 70 },  xp = 10 },  -- 600g
-    ['mullet']   = { label = 'Mullet',  price = { min = 55,  max = 85 },  xp = 12 },  -- 800g
+    ['catfish']   = { label = 'catfish',  price = { min = 55,  max = 85 },  xp = 12 },  -- 800g
     ['trout']    = { label = 'Trout',   price = { min = 70,  max = 110 }, xp = 14 },  -- 850g
     ['bass']     = { label = 'Bass',    price = { min = 80,  max = 125 }, xp = 16 },  -- 900g
     ['carp']     = { label = 'Carp',    price = { min = 90,  max = 140 }, xp = 18 },  -- 1.0kg
@@ -195,6 +195,35 @@ Config.MinCastInterval = 4000
 Config.AnimDict = 'amb@world_human_stand_fishing@idle_a'
 Config.AnimClip = 'idle_c'
 
+--- The rod in your hands while a session runs. Held from the first cast to the
+--- last, not per cast -- you do not put the rod away between casts.
+---
+--- The offsets are the fiddly part and cannot be checked from outside the game,
+--- so they are all config: nudge them rather than the code. `bone` is a ped
+--- bone id -- 60309 is SKEL_L_Hand, 57005 is SKEL_R_Hand, 28422 is PH_R_Hand --
+--- and the fishing animation holds the rod in the left hand with the right on
+--- the reel, which is why the default is the left.
+---
+--- Set `model = false` to fish empty-handed.
+Config.RodProp = {
+    model = 'prop_fishing_rod_01',
+    bone = 60309,
+    offset = vector3(0.0, 0.0, 0.0),
+
+    --- Pitch, roll, yaw in degrees. Found in game with /rodrot rather than
+    --- guessed at -- the two guesses before it (80 and -100 pitch) had the rod
+    --- pointing at the ground and then askew.
+    ---
+    --- **Do not guess at these from outside the game.** /rodtune puts the rod
+    --- in your hands where you stand, /rodrot and /rodoff move it while you
+    --- watch, and both print the line to paste back in here.
+    rotation = vector3(-180.0, 180.0, 200.0),
+
+    --- Registers /rodtune, /rodrot and /rodoff. They only attach a prop to your
+    --- own hands and print numbers, so they are safe to leave on.
+    tuneCommand = true,
+}
+
 --- Once you start, you keep casting until you stop -- fishing is not something
 --- you do one cast at a time.
 ---
@@ -213,9 +242,16 @@ Config.RecastDelay = 1500
 -- ---------------------------------------------------------------------------
 
 Config.Fishmonger = {
-    --- Where they stand. Paleto Bay pier, near the water.
-    coords = vector4(-1817.35, -1219.55, 13.02, 132.0),
+    --- Where they stand -- **the coordinate you are standing on**, as
+    --- /fishcoord prints it. The ped spawns at exactly this z; it used to spawn
+    --- a metre lower, which buried him in the pier and looked identical to the
+    --- ped never spawning at all.
+    coords = vector4(-1813.55, -1179.5, 12, 255.59),
 
+    --- Falls back to `a_m_m_genfat_01` if this will not load -- other
+    --- resources on this server use that one, so it is known good -- and then
+    --- to no ped at all, with the eye on the spot instead. Selling never
+    --- depends on a model existing.
     model = 'a_m_m_fishing_01',
 
     label = 'Sell fish',
