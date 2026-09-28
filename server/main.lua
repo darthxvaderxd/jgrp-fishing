@@ -121,18 +121,26 @@ lib.callback.register('jgrp-fishing:server:cast', function(source)
 
     lastCast[src] = now
 
+    -- The wait is rolled here and remembered, so `land` can refuse a strike
+    -- that comes back before the fish could have bitten.
+    local range = type(rod.castTime) == 'table' and rod.castTime or { rod.castTime or 9000, rod.castTime or 9000 }
+    local lo, hi = math.floor(range[1]), math.floor(range[2] or range[1])
+    if hi < lo then lo, hi = hi, lo end
+    local wait = math.random(lo, hi)
+
     casts[src] = {
         rod = rodName,
         bait = baitName,
         fish = hooked.item,
-        expires = now + (rod.castTime or 9000) + 30000,
+        biteAt = now + wait,
+        expires = now + wait + 30000,
     }
 
     return {
         ok = true,
         rod = rod.label or rodName,
         bait = bait.label or baitName,
-        castTime = rod.castTime or 9000,
+        castTime = wait,
         difficulty = rod.difficulty or 'medium',
         keptBait = keeps,
     }
@@ -150,6 +158,9 @@ lib.callback.register('jgrp-fishing:server:land', function(source, landed)
 
     -- A lost fish still costs the bait, which was taken when the line went in.
     if not landed then return { ok = false, reason = 'lost' } end
+
+    -- Struck before it bit: a client skipping the wait. Lost, like a miss.
+    if GetGameTimer() < cast.biteAt - 500 then return { ok = false, reason = 'lost' } end
 
     local fish = Config.Fish[cast.fish]
     if not fish then return { ok = false, reason = 'error' } end

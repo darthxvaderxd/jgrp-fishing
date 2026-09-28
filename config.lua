@@ -25,7 +25,10 @@ Config.Skill = 'fishing'
 --- carrying is the one used -- there is no picking.
 ---
 --- minLevel : fishing level needed to use it at all.
---- castTime : milliseconds before the fish bites. Better rods are quicker.
+--- castTime : { min, max } milliseconds before the fish bites, rolled per
+---            cast on the server. 5-30 seconds on every rod (2026-09-23,
+---            was a flat 9s down to 6s): a better rod no longer bites
+---            sooner, it strikes easier and keeps more bait.
 --- difficulty : ox_lib skill check for the strike. Better rods make it easier.
 ---
 ---              **Explicit numbers, not the presets.** ox_lib's are
@@ -47,19 +50,19 @@ Config.Skill = 'fishing'
 --- all in place -- see the README for the one edit items.lua still needs.
 Config.Rods = {
     ['rod_1'] = {
-        label = 'Fishing Rod I',   minLevel = 0,  castTime = 9000, keeps = 0.00,
+        label = 'Fishing Rod I',   minLevel = 0,  castTime = { 5000, 30000 }, keeps = 0.00,
         difficulty = { areaSize = 45, speedMultiplier = 0.9 },
     },
     ['rod_2'] = {
-        label = 'Fishing Rod II',  minLevel = 2,  castTime = 8000, keeps = 0.10,
+        label = 'Fishing Rod II',  minLevel = 2,  castTime = { 5000, 30000 }, keeps = 0.10,
         difficulty = { areaSize = 55, speedMultiplier = 0.8 },
     },
     ['rod_3'] = {
-        label = 'Fishing Rod III', minLevel = 5,  castTime = 7000, keeps = 0.20,
+        label = 'Fishing Rod III', minLevel = 5,  castTime = { 5000, 30000 }, keeps = 0.20,
         difficulty = { areaSize = 65, speedMultiplier = 0.7 },
     },
     ['rod_4'] = {
-        label = 'Fishing Rod IV',  minLevel = 10, castTime = 6000, keeps = 0.30,
+        label = 'Fishing Rod IV',  minLevel = 10, castTime = { 5000, 30000 }, keeps = 0.30,
         difficulty = { areaSize = 75, speedMultiplier = 0.6 },
     },
 }

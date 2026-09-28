@@ -137,6 +137,47 @@ end
 --- @return boolean keepFishing false when the loop should stop -- out of gear,
 ---         out of room, out of water, or the player reeled in on purpose. A
 ---         fish getting away is not one of them.
+--- The line in the water, with nothing on screen (2026-09-23): a bar would
+--- give away when the fish bites, and the wait is random so that it cannot
+--- be read. Holds the player the way ox_lib's progress bar did -- no moving,
+--- no fighting, no getting in a car -- and X reels in early, the same key.
+--- @return boolean true when the wait ran out, false when reeled in
+local function waitForBite(duration)
+    local deadline = GetGameTimer() + duration
+
+    while GetGameTimer() < deadline do
+        local ped = PlayerPedId()
+
+        if IsPedDeadOrDying(ped, true) or IsPedRagdoll(ped) then return false end
+
+        -- Move, sprint, jump, crouch, cover.
+        DisableControlAction(0, 30, true)
+        DisableControlAction(0, 31, true)
+        DisableControlAction(0, 21, true)
+        DisableControlAction(0, 22, true)
+        DisableControlAction(0, 36, true)
+        DisableControlAction(0, 44, true)
+        -- Attack, aim, melee, weapon wheel.
+        DisableControlAction(0, 24, true)
+        DisableControlAction(0, 25, true)
+        DisableControlAction(0, 140, true)
+        DisableControlAction(0, 141, true)
+        DisableControlAction(0, 142, true)
+        DisableControlAction(0, 257, true)
+        DisableControlAction(0, 263, true)
+        DisableControlAction(0, 37, true)
+        -- Enter a vehicle.
+        DisableControlAction(0, 23, true)
+        DisableControlAction(0, 75, true)
+
+        if IsControlJustReleased(0, 73) then return false end
+
+        Wait(0)
+    end
+
+    return true
+end
+
 local function doCast()
     if IsPedInAnyVehicle(PlayerPedId(), false) then
         notify('Not from in a car.', 'error')
@@ -179,12 +220,7 @@ local function doCast()
     -- sitting in the water, not a roll in progress.
     playCastAnim(start.castTime + 5000)
 
-    local waiting = lib.progressBar({
-        duration = start.castTime,
-        label = ('Fishing with %s'):format(start.bait),
-        canCancel = true,
-        disable = { move = true, car = true, combat = true },
-    })
+    local waiting = waitForBite(start.castTime)
 
     if not waiting then
         stopCastAnim()
