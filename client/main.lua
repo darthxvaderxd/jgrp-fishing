@@ -11,6 +11,11 @@ local function notify(message, type)
     QBCore.Functions.Notify(message, type or 'primary')
 end
 
+local function incapacitated()
+    local md = QBCore.Functions.GetPlayerData().metadata or {}
+    return (md.isdead or md.inlaststand or md.ishandcuffed or IsPedDeadOrDying(PlayerPedId(), true)) and true or false
+end
+
 local function hasTarget()
     return GetResourceState('ox_target') == 'started'
 end
@@ -148,7 +153,7 @@ local function waitForBite(duration)
     while GetGameTimer() < deadline do
         local ped = PlayerPedId()
 
-        if IsPedDeadOrDying(ped, true) or IsPedRagdoll(ped) then return false end
+        if incapacitated() or IsPedRagdoll(ped) then return false end
 
         -- Move, sprint, jump, crouch, cover.
         DisableControlAction(0, 30, true)
@@ -179,6 +184,11 @@ local function waitForBite(duration)
 end
 
 local function doCast()
+    if incapacitated() then
+        notify("You can't do that right now.", 'error')
+        return false
+    end
+
     if IsPedInAnyVehicle(PlayerPedId(), false) then
         notify('Not from in a car.', 'error')
         return false
@@ -207,6 +217,8 @@ local function doCast()
             notify('You are out of bait.', 'error')
         elseif reason == 'bait_level' then
             notify(('%s needs fishing level %d.'):format(start.label or 'That bait', start.level or 0), 'error')
+        elseif reason == 'incapacitated' then
+            return false -- the server already said so
         elseif reason == 'no_skill' then
             notify('Your record is unreachable right now.', 'error')
         elseif reason ~= 'too_fast' then
@@ -273,6 +285,8 @@ local function doCast()
         return false
     end
 
+    if result.reason == 'incapacitated' then return false end
+
     if result.reason ~= 'no_cast' then
         notify('It got away.', 'error')
     end
@@ -283,6 +297,11 @@ end
 --- Fish until told to stop.
 local function cast()
     if casting then return end
+
+    if incapacitated() then
+        notify("You can't do that right now.", 'error')
+        return
+    end
 
     casting = true
     stopRequested = false
@@ -330,6 +349,10 @@ RegisterNetEvent('jgrp-fishing:client:cast', cast)
 -- ---------------------------------------------------------------------------
 
 local function sell(item)
+    if incapacitated() then
+        return notify("You can't do that right now.", 'error')
+    end
+
     local ok, result = pcall(lib.callback.await, 'jgrp-fishing:server:sell', false, item)
 
     if not ok or type(result) ~= 'table' then
@@ -346,12 +369,18 @@ local function sell(item)
         notify('You are not at the fishmonger.', 'error')
     elseif result.reason == 'no_room' then
         notify('You have no room for the payment.', 'error')
+    elseif result.reason == 'incapacitated' then
+        return -- the server already said so
     else
         notify('He is not buying that.', 'error')
     end
 end
 
 local function openFishmonger()
+    if incapacitated() then
+        return notify("You can't do that right now.", 'error')
+    end
+
     local held = lib.callback.await('jgrp-fishing:server:catchOnHand', false)
 
     if type(held) ~= 'table' or #held == 0 then

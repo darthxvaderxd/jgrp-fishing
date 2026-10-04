@@ -17,6 +17,18 @@ local function notify(src, message, type)
     TriggerClientEvent('QBCore:Notify', src, message, type or 'primary')
 end
 
+--- Dead, in last stand or handcuffed: no work, no crime.
+local function incapacitated(src)
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return true end
+
+    local md = Player.PlayerData.metadata or {}
+    if md.isdead or md.inlaststand or md.ishandcuffed then return true end
+
+    local ped = GetPlayerPed(src)
+    return ped ~= 0 and GetEntityHealth(ped) <= 0
+end
+
 local function getLevel(src)
     if GetResourceState('jgrp-skills') ~= 'started' then return nil end
 
@@ -68,6 +80,11 @@ lib.callback.register('jgrp-fishing:server:cast', function(source)
 
     local Player = QBCore.Functions.GetPlayer(src)
     if not Player then return { ok = false, reason = 'error' } end
+
+    if incapacitated(src) then
+        notify(src, "You can't do that right now.", 'error')
+        return { ok = false, reason = 'incapacitated' }
+    end
 
     local now = GetGameTimer()
 
@@ -159,6 +176,12 @@ lib.callback.register('jgrp-fishing:server:land', function(source, landed)
     -- A lost fish still costs the bait, which was taken when the line went in.
     if not landed then return { ok = false, reason = 'lost' } end
 
+    -- Downed or cuffed with the line in the water: nothing is landed, nothing is paid
+    if incapacitated(src) then
+        notify(src, "You can't do that right now.", 'error')
+        return { ok = false, reason = 'incapacitated' }
+    end
+
     -- Struck before it bit: a client skipping the wait. Lost, like a miss.
     if GetGameTimer() < cast.biteAt - 500 then return { ok = false, reason = 'lost' } end
 
@@ -227,6 +250,11 @@ lib.callback.register('jgrp-fishing:server:sell', function(source, item)
 
     local Player = QBCore.Functions.GetPlayer(src)
     if not Player then return { ok = false, reason = 'error' } end
+
+    if incapacitated(src) then
+        notify(src, "You can't do that right now.", 'error')
+        return { ok = false, reason = 'incapacitated' }
+    end
 
     local coords = GetEntityCoords(GetPlayerPed(src))
     local monger = Config.Fishmonger.coords
