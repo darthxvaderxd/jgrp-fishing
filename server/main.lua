@@ -1,5 +1,12 @@
 local QBCore = exports['qb-core']:GetCoreObject()
 
+--- Display name for log lines: character name, else the Cfx player name.
+local function jgrpLogName(src, Player)
+    local ci = Player and Player.PlayerData and Player.PlayerData.charinfo
+    if ci and ci.firstname then return ('%s %s'):format(ci.firstname, ci.lastname or '') end
+    return GetPlayerName(src) or 'Unknown'
+end
+
 --- [source] = ms of the last accepted cast, the floor a client cannot get
 --- under however it talks to us.
 local lastCast = {}
@@ -295,6 +302,10 @@ lib.callback.register('jgrp-fishing:server:sell', function(source, item)
     else
         Player.Functions.AddMoney('cash', total, 'jgrp-fishing:sale')
     end
+
+    TriggerEvent('jgrp-logging:server:logPlayer', src, 'job.fishing.sell',
+        ('%s sold %d fish to the fishmonger for %d'):format(jgrpLogName(src, Player), sold, total),
+        { sold = sold, pay = total, item = item or 'all' })
 
     return { ok = true, sold = sold, amount = total }
 end)
