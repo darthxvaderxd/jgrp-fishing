@@ -151,26 +151,27 @@ Config.BaitOrder = { 'illegalbait', 'shrimp_lure', 'worm' }
 --- against the average XP of the pool that gets you there.
 ---
 --- price : dollars, rolled per fish at the fishmonger.
---- xp    : fishing XP for landing one.
+--- xp    : fishing XP for landing one. Rebalanced 2026-10-10 (x0.6) so illegal-bait fishing (95 of 100 levels)
+---         pays ~3000 XP/h like every other skill; worm/shrimp levels are slower by design (cheap levels).
 --- weight is deliberately **not** here -- ox_inventory owns that, and the
 --- numbers in the comments are its, so a change there does not leave a stale
 --- copy in this file.
 Config.Fish = {
-    ['perch']    = { label = 'Perch',   price = { min = 45,  max = 70 },  xp = 10 },  -- 600g
-    ['catfish']   = { label = 'catfish',  price = { min = 55,  max = 85 },  xp = 12 },  -- 800g
-    ['trout']    = { label = 'Trout',   price = { min = 70,  max = 110 }, xp = 14 },  -- 850g
-    ['bass']     = { label = 'Bass',    price = { min = 80,  max = 125 }, xp = 16 },  -- 900g
-    ['carp']     = { label = 'Carp',    price = { min = 90,  max = 140 }, xp = 18 },  -- 1.0kg
-    ['crab']     = { label = 'Crab',    price = { min = 130, max = 190 }, xp = 26 },  -- 1.2kg
-    ['lobster']  = { label = 'Lobster', price = { min = 180, max = 260 }, xp = 32 },  -- 1.5kg
-    ['octopus']  = { label = 'Octopus', price = { min = 220, max = 320 }, xp = 38 },  -- 1.8kg
-    ['tuna']     = { label = 'Tuna',    price = { min = 240, max = 350 }, xp = 40 },  -- 2.0kg
-    ['turtle']   = { label = 'Turtle',  price = { min = 320, max = 460 }, xp = 55 },  -- 3.0kg
+    ['perch']    = { label = 'Perch',   price = { min = 45,  max = 70 },  xp = 8 },  -- 600g
+    ['catfish']   = { label = 'catfish',  price = { min = 55,  max = 85 },  xp = 9 },  -- 800g
+    ['trout']    = { label = 'Trout',   price = { min = 70,  max = 110 }, xp = 10 },  -- 850g
+    ['bass']     = { label = 'Bass',    price = { min = 80,  max = 125 }, xp = 13 },  -- 900g
+    ['carp']     = { label = 'Carp',    price = { min = 90,  max = 140 }, xp = 14 },  -- 1.0kg
+    ['crab']     = { label = 'Crab',    price = { min = 130, max = 190 }, xp = 21 },  -- 1.2kg
+    ['lobster']  = { label = 'Lobster', price = { min = 180, max = 260 }, xp = 25 },  -- 1.5kg
+    ['octopus']  = { label = 'Octopus', price = { min = 220, max = 320 }, xp = 30 },  -- 1.8kg
+    ['tuna']     = { label = 'Tuna',    price = { min = 240, max = 350 }, xp = 31 },  -- 2.0kg
+    ['turtle']   = { label = 'Turtle',  price = { min = 320, max = 460 }, xp = 43 },  -- 3.0kg
 
     -- Rubbish. Worth pennies, weighs a ton, and that is the joke -- a toaster
     -- is 5kg, heavier than anything that swims.
-    ['toaster']  = { label = 'Toaster',  price = { min = 5,  max = 20 }, xp = 2 },    -- 5.0kg
-    ['small_tv'] = { label = 'Small TV', price = { min = 15, max = 40 }, xp = 2 },    -- 100g
+    ['toaster']  = { label = 'Toaster',  price = { min = 5,  max = 20 }, xp = 1 },    -- 5.0kg
+    ['small_tv'] = { label = 'Small TV', price = { min = 15, max = 40 }, xp = 1 },    -- 100g
 }
 
 --- Sold to the fishmonger in one go, or one at a time. Cash, like the corner.

@@ -246,7 +246,7 @@ local function doCast()
     end
 
     -- The strike. Miss it and the fish is gone, bait with it.
-    local landed = lib.skillCheck(start.difficulty, { 'w', 'a', 's', 'd' })
+    local landed = start.skipMinigame or lib.skillCheck(start.difficulty, { 'w', 'a', 's', 'd' })
 
     stopCastAnim()
 

@@ -16,6 +16,11 @@ local lastCast = {}
 --- client cannot retry a bad catch by dropping the strike.
 local casts = {}
 
+--- [source] = true while an admin has switched their own strike minigame off
+--- (/fishminigame). Server-held, so only a successful admin check can set it;
+--- cleared on drop. The cast result is the only thing that reads it.
+local skipMinigame = {}
+
 -- ---------------------------------------------------------------------------
 -- Helpers
 -- ---------------------------------------------------------------------------
@@ -167,6 +172,7 @@ lib.callback.register('jgrp-fishing:server:cast', function(source)
         castTime = wait,
         difficulty = rod.difficulty or 'medium',
         keptBait = keeps,
+        skipMinigame = skipMinigame[src] or nil,
     }
 end)
 
@@ -369,4 +375,19 @@ end)
 AddEventHandler('playerDropped', function()
     casts[source] = nil
     lastCast[source] = nil
+    skipMinigame[source] = nil
 end)
+
+--- Admins only, for themselves only: toggles the strike minigame off so the
+--- bite always lands. Everyone else is refused and nothing is stored.
+RegisterCommand('fishminigame', function(src)
+    if src == 0 then return end
+
+    if not (QBCore.Functions.HasPermission(src, 'admin') or QBCore.Functions.HasPermission(src, 'god')) then
+        notify(src, 'You are not allowed to do that.', 'error')
+        return
+    end
+
+    skipMinigame[src] = not skipMinigame[src] or nil
+    notify(src, skipMinigame[src] and 'Fishing minigame: OFF (bites always land).' or 'Fishing minigame: ON.', 'primary')
+end, false)
