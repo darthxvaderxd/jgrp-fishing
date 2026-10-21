@@ -68,6 +68,68 @@ local function countAll(src, names)
     return counts
 end
 
+--- The rods a player can still cast with, from their actual slots.
+---
+--- Durability lives in each slot's metadata, so counting items (`countItem`)
+--- cannot tell a worn-out rod from a good one. A rod with no durability yet --
+--- bought before rods had any -- counts as new; ox fills the bar in itself the
+--- next time the inventory loads.
+---
+--- @return table<string, number> counts  usable rods by item name
+--- @return table<string, table> worst    the most worn usable slot of each, the
+---         one to spend first
+local function usableRods(src)
+    local counts, worst = {}, {}
+
+    for i = 1, #Config.RodOrder do
+        local name = Config.RodOrder[i]
+        local ok, slots = pcall(function() return exports.ox_inventory:Search(src, 'slots', name) end)
+        local n = 0
+
+        if ok and type(slots) == 'table' then
+            for _, slot in pairs(slots) do
+                local d = slot.metadata and slot.metadata.durability
+
+                if d == nil or d > 0 then
+                    n = n + 1
+
+                    local at = d or 100
+                    local cur = worst[name]
+                    if not cur or at < cur.durability then
+                        worst[name] = { slot = slot.slot, durability = at }
+                    end
+                end
+            end
+        end
+
+        counts[name] = n
+    end
+
+    return counts, worst
+end
+
+--- One cast's wear on the rod in `slot`. At zero the rod snaps and is removed;
+--- the cast in the air still lands, the next one is refused for want of a rod.
+local function wearRod(src, name, rod, slot)
+    if not slot or not rod.casts or rod.casts <= 0 then return end
+
+    local per = 100 / rod.casts
+    local left = slot.durability - per
+
+    if left <= 0 then
+        exports.ox_inventory:RemoveItem(src, name, 1, nil, slot.slot)
+        notify(src, ('Your %s snapped.'):format(rod.label or name), 'error')
+        return
+    end
+
+    exports.ox_inventory:SetDurability(src, slot.slot, math.floor(left * 10) / 10)
+
+    -- Once, on the way down past 10%, not on every cast after.
+    if slot.durability > 10 and left <= 10 then
+        notify(src, ('Your %s is nearly worn out.'):format(rod.label or name), 'error')
+    end
+end
+
 local function awardXp(src, xp)
     if not xp or xp <= 0 then return 0 end
     if GetResourceState('jgrp-skills') ~= 'started' then return 0 end
@@ -109,8 +171,10 @@ lib.callback.register('jgrp-fishing:server:cast', function(source)
     local level = getLevel(src)
     if not level then return { ok = false, reason = 'no_skill' } end
 
+    local rodCounts, rodSlots = usableRods(src)
+
     local rodName, rod, rodProblem = Config.BestOf(
-        countAll(src, Config.RodOrder), Config.RodOrder, Config.Rods, level)
+        rodCounts, Config.RodOrder, Config.Rods, level)
 
     if not rodName then
         return {
@@ -149,6 +213,8 @@ lib.callback.register('jgrp-fishing:server:cast', function(source)
     end
 
     lastCast[src] = now
+
+    wearRod(src, rodName, rod, rodSlots[rodName])
 
     -- The wait is rolled here and remembered, so `land` can refuse a strike
     -- that comes back before the fish could have bitten.
@@ -230,13 +296,35 @@ end)
 -- Selling
 -- ---------------------------------------------------------------------------
 
+--- The buyer the player is standing at, or nil. The server works this out from
+--- where the ped is; the client is never asked which kind it thinks it is at.
+local function spotNear(src)
+    local coords = GetEntityCoords(GetPlayerPed(src))
+
+    for _, spot in ipairs(Config.MongerSpots()) do
+        local reach = (spot.def.targetDistance or 2.5) + 5.0
+        local c = spot.coords
+
+        if #(coords - vector3(c.x, c.y, c.z)) <= reach then return spot end
+    end
+end
+
+--- Whether the buyer at `spot` takes this catch: never junk, and the legal
+--- fishmongers and the illegal buyer split the rest on `illegal`.
+local function buys(spot, fish)
+    return not fish.junk and (fish.illegal and true or false) == spot.illegal
+end
+
 --- What the fishmonger would take off you, and for how much.
 lib.callback.register('jgrp-fishing:server:catchOnHand', function(source)
     local src = source
+    local spot = spotNear(src)
     local held = {}
 
+    if not spot then return { rows = held } end
+
     for item, fish in pairs(Config.Fish) do
-        local count = countItem(src, item)
+        local count = buys(spot, fish) and countItem(src, item) or 0
 
         if count > 0 then
             held[#held + 1] = {
@@ -251,7 +339,7 @@ lib.callback.register('jgrp-fishing:server:catchOnHand', function(source)
 
     table.sort(held, function(a, b) return a.max > b.max end)
 
-    return held
+    return { rows = held, title = spot.def.menuTitle, illegal = spot.illegal }
 end)
 
 --- Sell one kind of fish, or everything.
@@ -269,18 +357,19 @@ lib.callback.register('jgrp-fishing:server:sell', function(source, item)
         return { ok = false, reason = 'incapacitated' }
     end
 
-    local coords = GetEntityCoords(GetPlayerPed(src))
-    local monger = Config.Fishmonger.coords
+    local spot = spotNear(src)
 
-    if #(coords - vector3(monger.x, monger.y, monger.z)) > (Config.Fishmonger.targetDistance or 2.5) + 5.0 then
+    if not spot then
         return { ok = false, reason = 'too_far' }
     end
 
     local wanted = {}
 
     if item == nil then
-        for name in pairs(Config.Fish) do wanted[#wanted + 1] = name end
-    elseif Config.Fish[item] then
+        for name, fish in pairs(Config.Fish) do
+            if buys(spot, fish) then wanted[#wanted + 1] = name end
+        end
+    elseif Config.Fish[item] and buys(spot, Config.Fish[item]) then
         wanted[1] = item
     else
         return { ok = false, reason = 'unknown' }
@@ -310,8 +399,8 @@ lib.callback.register('jgrp-fishing:server:sell', function(source, item)
     end
 
     TriggerEvent('jgrp-logging:server:logPlayer', src, 'job.fishing.sell',
-        ('%s sold %d fish to the fishmonger for %d'):format(jgrpLogName(src, Player), sold, total),
-        { sold = sold, pay = total, item = item or 'all' })
+        ('%s sold %d fish to the %s for %d'):format(jgrpLogName(src, Player), sold, spot.illegal and 'illegal buyer' or 'fishmonger', total),
+        { sold = sold, pay = total, item = item or 'all', illegal = spot.illegal })
 
     return { ok = true, sold = sold, amount = total }
 end)

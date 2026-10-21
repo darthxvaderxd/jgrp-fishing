@@ -5,7 +5,9 @@ local TARGET_OPTION = 'jgrp_fishing_sell'
 local casting = false
 local stopRequested = false
 local rodProp
-local monger, mongerZone, mongerBlip
+--- [i] = { ped = entity, zone = id } for each Config.MongerSpots() entry.
+local mongers = {}
+local mongerBlips = {}
 
 local function notify(message, type)
     QBCore.Functions.Notify(message, type or 'primary')
@@ -246,9 +248,11 @@ local function doCast()
     end
 
     -- The strike. Miss it and the fish is gone, bait with it.
+    --
+    -- The fishing animation is left running from here: it used to be stopped
+    -- and then restarted a recast-delay later, which put the player standing
+    -- idle after every catch. cast() stops it when the session ends.
     local landed = start.skipMinigame or lib.skillCheck(start.difficulty, { 'w', 'a', 's', 'd' })
-
-    stopCastAnim()
 
     local ok, result = pcall(lib.callback.await, 'jgrp-fishing:server:land', false, landed and true or false)
 
@@ -381,7 +385,8 @@ local function openFishmonger()
         return notify("You can't do that right now.", 'error')
     end
 
-    local held = lib.callback.await('jgrp-fishing:server:catchOnHand', false)
+    local answer = lib.callback.await('jgrp-fishing:server:catchOnHand', false)
+    local held = type(answer) == 'table' and answer.rows
 
     if type(held) ~= 'table' or #held == 0 then
         return notify('You have nothing to sell.', 'error')
@@ -411,7 +416,7 @@ local function openFishmonger()
 
     lib.registerContext({
         id = 'jgrp_fishing_monger',
-        title = 'Fishmonger',
+        title = answer.title or 'Fishmonger',
         options = options,
     })
 
@@ -426,10 +431,10 @@ end
 --- load on this server -- `a_m_m_fishing_01` was never verified, and a model
 --- that does not exist makes `lib.requestModel` raise, which used to leave no
 --- ped and no explanation.
-local function mongerModels()
+local function mongerModels(def)
     local models = {}
 
-    if Config.Fishmonger.model then models[#models + 1] = Config.Fishmonger.model end
+    if def.model then models[#models + 1] = def.model end
     models[#models + 1] = 'a_m_m_genfat_01'
 
     return models
@@ -437,14 +442,16 @@ end
 
 --- The eye, wherever it ends up -- on the ped if there is one, on the spot if
 --- there is not. Selling should not depend on a model existing.
-local function addSellTarget(entity)
+---
+--- @return any|nil zone  the sphere zone id when there was no ped
+local function addSellTarget(entity, spot, def)
     if not hasTarget() then return end
 
     local option = {
         name = TARGET_OPTION,
-        icon = Config.Fishmonger.icon,
-        label = Config.Fishmonger.label,
-        distance = Config.Fishmonger.targetDistance,
+        icon = def.icon,
+        label = def.label,
+        distance = def.targetDistance,
         onSelect = openFishmonger,
     }
 
@@ -453,27 +460,25 @@ local function addSellTarget(entity)
         return
     end
 
-    local spot = Config.Fishmonger.coords
-
     local ok, zone = pcall(function()
         return exports.ox_target:addSphereZone({
             coords = vector3(spot.x, spot.y, spot.z),
-            radius = math.max(1.5, Config.Fishmonger.targetDistance or 2.5),
+            radius = math.max(1.5, def.targetDistance or 2.5),
             options = { option },
         })
     end)
 
-    if ok and zone then mongerZone = zone end
+    if ok and zone then return zone end
 end
 
-local function spawnMonger()
-    if monger and DoesEntityExist(monger) then return end
-    if mongerZone then return end
+local function spawnMonger(i, spot, def)
+    local live = mongers[i]
 
-    local spot = Config.Fishmonger.coords
+    if live and (live.zone or (live.ped and DoesEntityExist(live.ped))) then return end
+
     local model
 
-    for _, candidate in ipairs(mongerModels()) do
+    for _, candidate in ipairs(mongerModels(def)) do
         local loaded, hash = pcall(lib.requestModel, candidate, 10000)
 
         if loaded and hash then
@@ -487,77 +492,92 @@ local function spawnMonger()
     if not model then
         -- No ped at all: put the eye on the spot so the shop still works.
         print('^1[jgrp-fishing]^7 no fishmonger model loaded -- selling from a zone instead')
-        addSellTarget(nil)
+        mongers[i] = { zone = addSellTarget(nil, spot, def) }
         return
     end
 
     -- **At spot.z, not below it.** /fishcoord prints GetEntityCoords of the
     -- player, which is already where the feet are; spawning a metre under that
     -- buried him in the pier, which looks exactly like the ped never spawning.
-    monger = CreatePed(4, model, spot.x, spot.y, spot.z, spot.w, false, false)
+    local ped = CreatePed(4, model, spot.x, spot.y, spot.z, spot.w, false, false)
 
-    if not DoesEntityExist(monger) then
+    if not DoesEntityExist(ped) then
         SetModelAsNoLongerNeeded(model)
-        monger = nil
-        addSellTarget(nil)
+        mongers[i] = { zone = addSellTarget(nil, spot, def) }
         return
     end
 
-    SetEntityHeading(monger, spot.w or 0.0)
-    FreezeEntityPosition(monger, true)
-    SetEntityInvincible(monger, true)
-    SetBlockingOfNonTemporaryEvents(monger, true)
+    SetEntityHeading(ped, spot.w or 0.0)
+    FreezeEntityPosition(ped, true)
+    SetEntityInvincible(ped, true)
+    SetBlockingOfNonTemporaryEvents(ped, true)
     SetModelAsNoLongerNeeded(model)
 
-    addSellTarget(monger)
+    mongers[i] = { ped = ped }
+    addSellTarget(ped, spot, def)
 end
 
-local function removeMonger()
-    if mongerZone then
+local function removeMonger(i)
+    local live = mongers[i]
+    if not live then return end
+
+    if live.zone and hasTarget() then
+        pcall(function() exports.ox_target:removeZone(live.zone) end)
+    end
+
+    if live.ped then
         if hasTarget() then
-            pcall(function() exports.ox_target:removeZone(mongerZone) end)
+            pcall(function() exports.ox_target:removeLocalEntity(live.ped, TARGET_OPTION) end)
         end
-        mongerZone = nil
+
+        if DoesEntityExist(live.ped) then DeleteEntity(live.ped) end
     end
 
-    if not monger then return end
-
-    if hasTarget() then
-        pcall(function() exports.ox_target:removeLocalEntity(monger, TARGET_OPTION) end)
-    end
-
-    if DoesEntityExist(monger) then DeleteEntity(monger) end
-    monger = nil
+    mongers[i] = nil
 end
 
 CreateThread(function()
-    local spot = Config.Fishmonger.coords
-    local blip = Config.Fishmonger.blip
+    local spots = Config.MongerSpots()
 
-    if blip then
-        mongerBlip = AddBlipForCoord(spot.x, spot.y, spot.z)
-        SetBlipSprite(mongerBlip, blip.sprite or 68)
-        SetBlipColour(mongerBlip, blip.colour or 3)
-        SetBlipScale(mongerBlip, blip.scale or 0.7)
-        SetBlipAsShortRange(mongerBlip, true)
+    for i = 1, #spots do
+        local c = spots[i].coords
+        local blip = spots[i].def.blip
 
-        BeginTextCommandSetBlipName('STRING')
-        AddTextComponentSubstringPlayerName('Fishmonger')
-        EndTextCommandSetBlipName(mongerBlip)
+        if blip then
+            local b = AddBlipForCoord(c.x, c.y, c.z)
+
+            SetBlipSprite(b, blip.sprite or 68)
+            SetBlipColour(b, blip.colour or 3)
+            SetBlipScale(b, blip.scale or 0.7)
+            SetBlipAsShortRange(b, true)
+
+            BeginTextCommandSetBlipName('STRING')
+            AddTextComponentSubstringPlayerName('Fishmonger')
+            EndTextCommandSetBlipName(b)
+
+            mongerBlips[#mongerBlips + 1] = b
+        end
     end
 
     while true do
         local wait = 2000
 
         if LocalPlayer.state.isLoggedIn then
-            local distance = #(GetEntityCoords(PlayerPedId()) - vector3(spot.x, spot.y, spot.z))
+            local here = GetEntityCoords(PlayerPedId())
+            local anyNear = false
 
-            if distance <= 100.0 then
-                spawnMonger()
-            else
-                removeMonger()
-                wait = 4000
+            for i = 1, #spots do
+                local c = spots[i].coords
+
+                if #(here - vector3(c.x, c.y, c.z)) <= 100.0 then
+                    anyNear = true
+                    spawnMonger(i, c, spots[i].def)
+                else
+                    removeMonger(i)
+                end
             end
+
+            if not anyNear then wait = 4000 end
         end
 
         Wait(wait)
@@ -661,6 +681,9 @@ AddEventHandler('onResourceStop', function(resource)
     detachRod()
     lib.hideTextUI()
 
-    removeMonger()
-    if mongerBlip and DoesBlipExist(mongerBlip) then RemoveBlip(mongerBlip) end
+    for i = 1, #Config.MongerSpots() do removeMonger(i) end
+
+    for i = 1, #mongerBlips do
+        if DoesBlipExist(mongerBlips[i]) then RemoveBlip(mongerBlips[i]) end
+    end
 end)

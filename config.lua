@@ -41,6 +41,12 @@ Config.Skill = 'fishing'
 ---
 ---              areaSize: width of the hit zone, bigger is easier.
 ---              speedMultiplier: 1.0 is ox_lib's baseline; lower is slower.
+--- casts    : how many casts the rod lasts. Every accepted cast wears it by
+---            100 / casts percent of its ox_inventory durability bar, and at
+---            zero it snaps and is gone. A rod with no durability yet (bought
+---            before this existed) counts as new. Sized against the shop price
+---            (150 / 750 / 2800 / 9000) so a rod costs a few dollars to a
+---            dozen a cast -- 2026-10-18.
 --- keeps    : chance (0.0 - 1.0) the bait survives the cast. A better rod
 ---            wastes less bait, which matters more than it sounds at the top
 ---            of the ladder where bait is expensive.
@@ -50,18 +56,22 @@ Config.Skill = 'fishing'
 --- all in place -- see the README for the one edit items.lua still needs.
 Config.Rods = {
     ['rod_1'] = {
+        casts = 60,
         label = 'Fishing Rod I',   minLevel = 0,  castTime = { 5000, 30000 }, keeps = 0.00,
         difficulty = { areaSize = 45, speedMultiplier = 0.9 },
     },
     ['rod_2'] = {
+        casts = 150,
         label = 'Fishing Rod II',  minLevel = 2,  castTime = { 5000, 30000 }, keeps = 0.10,
         difficulty = { areaSize = 55, speedMultiplier = 0.8 },
     },
     ['rod_3'] = {
+        casts = 350,
         label = 'Fishing Rod III', minLevel = 5,  castTime = { 5000, 30000 }, keeps = 0.20,
         difficulty = { areaSize = 65, speedMultiplier = 0.7 },
     },
     ['rod_4'] = {
+        casts = 800,
         label = 'Fishing Rod IV',  minLevel = 10, castTime = { 5000, 30000 }, keeps = 0.30,
         difficulty = { areaSize = 75, speedMultiplier = 0.6 },
     },
@@ -157,24 +167,30 @@ Config.BaitOrder = { 'illegalbait', 'shrimp_lure', 'worm' }
 --- numbers in the comments are its, so a change there does not leave a stale
 --- copy in this file.
 Config.Fish = {
-    ['perch']    = { label = 'Perch',   price = { min = 45,  max = 70 },  xp = 8 },  -- 600g
-    ['catfish']   = { label = 'catfish',  price = { min = 55,  max = 85 },  xp = 9 },  -- 800g
-    ['trout']    = { label = 'Trout',   price = { min = 70,  max = 110 }, xp = 10 },  -- 850g
-    ['bass']     = { label = 'Bass',    price = { min = 80,  max = 125 }, xp = 13 },  -- 900g
-    ['carp']     = { label = 'Carp',    price = { min = 90,  max = 140 }, xp = 14 },  -- 1.0kg
-    ['crab']     = { label = 'Crab',    price = { min = 130, max = 190 }, xp = 21 },  -- 1.2kg
-    ['lobster']  = { label = 'Lobster', price = { min = 180, max = 260 }, xp = 25 },  -- 1.5kg
-    ['octopus']  = { label = 'Octopus', price = { min = 220, max = 320 }, xp = 30 },  -- 1.8kg
-    ['tuna']     = { label = 'Tuna',    price = { min = 240, max = 350 }, xp = 31 },  -- 2.0kg
-    ['turtle']   = { label = 'Turtle',  price = { min = 320, max = 460 }, xp = 43 },  -- 3.0kg
+    ['perch']    = { label = 'Perch',   price = { min = 45,  max = 70 },  xp = 6 },  -- 600g
+    ['catfish']   = { label = 'catfish',  price = { min = 55,  max = 85 },  xp = 7 },  -- 800g
+    ['trout']    = { label = 'Trout',   price = { min = 70,  max = 110 }, xp = 8 },  -- 850g
+    ['bass']     = { label = 'Bass',    price = { min = 80,  max = 125 }, xp = 10 },  -- 900g
+    ['carp']     = { label = 'Carp',    price = { min = 90,  max = 140 }, xp = 11 },  -- 1.0kg
+    ['crab']     = { label = 'Crab',    price = { min = 130, max = 190 }, xp = 16, illegal = true },  -- 1.2kg
+    ['lobster']  = { label = 'Lobster', price = { min = 180, max = 260 }, xp = 19, illegal = true },  -- 1.5kg
+    ['octopus']  = { label = 'Octopus', price = { min = 220, max = 320 }, xp = 23, illegal = true },  -- 1.8kg
+    ['tuna']     = { label = 'Tuna',    price = { min = 240, max = 350 }, xp = 24, illegal = true },  -- 2.0kg
+    ['turtle']   = { label = 'Turtle',  price = { min = 320, max = 460 }, xp = 33, illegal = true },  -- 3.0kg
 
-    -- Rubbish. Worth pennies, weighs a ton, and that is the joke -- a toaster
-    -- is 5kg, heavier than anything that swims.
-    ['toaster']  = { label = 'Toaster',  price = { min = 5,  max = 20 }, xp = 1 },    -- 5.0kg
-    ['small_tv'] = { label = 'Small TV', price = { min = 15, max = 40 }, xp = 1 },    -- 100g
+    -- Rubbish. Heavy, and that is the joke -- a toaster is 5kg, heavier than
+    -- anything that swims. `junk = true`: the fishmonger will not touch it
+    -- (2026-10-18) -- the pawn broker in jgrp-buyers buys both, so `price` here
+    -- is unused and only kept so the table stays one shape.
+    ['toaster']  = { label = 'Toaster',  price = { min = 5,  max = 20 }, xp = 1, junk = true },    -- 5.0kg
+    ['small_tv'] = { label = 'Small TV', price = { min = 15, max = 40 }, xp = 1, junk = true },    -- 100g
 }
 
---- Sold to the fishmonger in one go, or one at a time. Cash, like the corner.
+--- `illegal = true` (octopus, turtle, tuna, crab, lobster)
+--- is bought by Config.IllegalMonger and by nobody else (2026-10-18); the legal
+--- fishmongers refuse it.
+---
+--- Fish (not `junk`) are sold to the fishmonger in one go, or one at a time. Cash, like the corner.
 Config.PayoutType = 'cash'
 Config.PayoutItem = 'black_money'
 
@@ -238,8 +254,10 @@ Config.StopKey = 73            -- X. Control indices, not key codes.
 Config.StopLabel = '[X] Stop fishing'
 
 --- Pause between one cast finishing and the next going out, in milliseconds.
---- Long enough to read what you caught.
-Config.RecastDelay = 1500
+--- 1500 until 2026-10-18, which read as dead time after every catch; the
+--- notifications stay on screen on their own, and the fishing animation now
+--- keeps playing through the gap instead of dropping to idle.
+Config.RecastDelay = 400
 
 -- ---------------------------------------------------------------------------
 -- The fishmonger
@@ -251,6 +269,13 @@ Config.Fishmonger = {
     --- a metre lower, which buried him in the pier and looked identical to the
     --- ped never spawning at all.
     coords = vector4(-1813.55, -1179.5, 12, 255.59),
+
+    --- More fishmongers, same stock and prices, each with its own ped and blip.
+    --- Added 2026-10-18: Paleto. **The heading is a guess (0.0)** -- stand where
+    --- he should face and read it off /fishcoord.
+    extraCoords = {
+        vector4(-389.58, 6050.57, 31.5, 0.0),
+    },
 
     --- Falls back to `a_m_m_genfat_01` if this will not load -- other
     --- resources on this server use that one, so it is known good -- and then
@@ -270,8 +295,45 @@ Config.Fishmonger = {
 }
 
 -- ---------------------------------------------------------------------------
+-- The illegal buyer
+-- ---------------------------------------------------------------------------
+
+--- Takes the `illegal = true` catches, at the same prices, and nothing else.
+--- Added 2026-10-18. **The heading is a guess (0.0)** -- read the real one off
+--- /fishcoord. Model falls back to a_m_m_genfat_01 like the fishmonger's.
+Config.IllegalMonger = {
+    coords = vector4(3822.87, 4445.31, 3.03, 0.0),
+    model = 'a_m_m_tramp_01',
+
+    label = 'Sell illegal catch',
+    icon = 'fa-solid fa-user-secret',
+    menuTitle = 'No questions asked',
+    targetDistance = 2.5,
+
+    --- Hidden: people are meant to find him.
+    blip = false,
+}
+
+-- ---------------------------------------------------------------------------
 -- Shared helpers
 -- ---------------------------------------------------------------------------
+
+--- Every place a fish buyer stands, as { coords, illegal, def }: the main
+--- fishmonger, his extras, then the illegal buyer. `def` is the config table
+--- that spot's label, icon, model, distance and blip come from.
+function Config.MongerSpots()
+    local spots = { { coords = Config.Fishmonger.coords, illegal = false, def = Config.Fishmonger } }
+
+    for _, spot in ipairs(Config.Fishmonger.extraCoords or {}) do
+        spots[#spots + 1] = { coords = spot, illegal = false, def = Config.Fishmonger }
+    end
+
+    if Config.IllegalMonger then
+        spots[#spots + 1] = { coords = Config.IllegalMonger.coords, illegal = true, def = Config.IllegalMonger }
+    end
+
+    return spots
+end
 
 --- Pick one entry from a weighted list, or nil if it is empty.
 function Config.PickWeighted(list)
