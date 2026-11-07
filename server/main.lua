@@ -197,19 +197,27 @@ lib.callback.register('jgrp-fishing:server:cast', function(source)
         }
     end
 
+    -- The fish is rolled first so a player who could not carry it is turned
+    -- away before the bait is spent.
+    local hooked = Config.PickWeighted(bait.pool)
+
+    if not hooked or not Config.Fish[hooked.item] then
+        print(('^1[jgrp-fishing]^7 bait "%s" has a pool entry with no matching Config.Fish'):format(baitName))
+        return { ok = false, reason = 'error' }
+    end
+
+    -- LOCAL FIX 2026-11-03: ox's AddItem only looks for a free slot, never at
+    -- weight, so fishing used to carry a player past their limit.
+    if exports.ox_inventory:CanCarryItem(src, hooked.item, 1) == false then
+        return { ok = false, reason = 'no_room' }
+    end
+
     -- The rod sometimes saves the bait. Rolled before it is taken, so a saved
     -- bait is never removed and added back.
     local keeps = math.random() < (rod.keeps or 0.0)
 
     if not keeps and not exports.ox_inventory:RemoveItem(src, baitName, 1) then
         return { ok = false, reason = 'no_bait' }
-    end
-
-    local hooked = Config.PickWeighted(bait.pool)
-
-    if not hooked or not Config.Fish[hooked.item] then
-        print(('^1[jgrp-fishing]^7 bait "%s" has a pool entry with no matching Config.Fish'):format(baitName))
-        return { ok = false, reason = 'error' }
     end
 
     lastCast[src] = now
@@ -266,6 +274,12 @@ lib.callback.register('jgrp-fishing:server:land', function(source, landed)
 
     local fish = Config.Fish[cast.fish]
     if not fish then return { ok = false, reason = 'error' } end
+
+    -- Weight is checked here too: the cast-time check can go stale while the
+    -- line is in the water (picked something up, took a payout).
+    if exports.ox_inventory:CanCarryItem(src, cast.fish, 1) == false then
+        return { ok = false, reason = 'no_room', label = fish.label or cast.fish }
+    end
 
     local added, problem = exports.ox_inventory:AddItem(src, cast.fish, 1)
 

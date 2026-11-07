@@ -274,7 +274,7 @@ Config.Fishmonger = {
     --- Added 2026-10-18: Paleto. **The heading is a guess (0.0)** -- stand where
     --- he should face and read it off /fishcoord.
     extraCoords = {
-        vector4(-389.58, 6050.57, 31.5, 0.0),
+        vector4(-389.58, 6050.57, 30.5, 53.0), -- z 31.5 -> 30.8 -> 30.3 -> 30.5 (he floated), heading 0 -> 30 -> 53 (turned left), 2026-11-01
     },
 
     --- Falls back to `a_m_m_genfat_01` if this will not load -- other

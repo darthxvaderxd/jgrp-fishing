@@ -219,6 +219,8 @@ local function doCast()
             notify('You are out of bait.', 'error')
         elseif reason == 'bait_level' then
             notify(('%s needs fishing level %d.'):format(start.label or 'That bait', start.level or 0), 'error')
+        elseif reason == 'no_room' then
+            notify('You cannot carry any more fish.', 'error')
         elseif reason == 'incapacitated' then
             return false -- the server already said so
         elseif reason == 'no_skill' then
@@ -278,7 +280,7 @@ local function doCast()
     -- Full pockets is the one failure worth stopping for: every further cast
     -- would land a fish and then drop it.
     if result.reason == 'no_room' then
-        notify(('You landed a %s but have no room for it.'):format(result.label or 'fish'), 'error')
+        notify(('You landed a %s but cannot carry it.'):format(result.label or 'fish'), 'error')
         return false
     end
 
